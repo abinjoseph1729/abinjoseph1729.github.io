@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Emoji Escape</title>
+<style>
+  :root{
+    --bg-0:#05060d;
+    --bg-1:#0a0e1f;
+    --accent:#5ef0ff;
+    --accent-2:#ff5ec4;
+    --warn:#ffd23f;
+    --danger:#ff3b5c;
+    --ok:#39ff9d;
+    --ink:#eaf6ff;
+    --ink-dim:#9fb3c8;
+    --panel:rgba(10,16,32,0.72);
+    --panel-border:rgba(94,240,255,0.18);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:var(--bg-0);
+    overflow:hidden;
+    font-family:'Segoe UI', system-ui, -apple-system, sans-serif;
+    touch-action:none;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  #gameContainer{
+    position:fixed; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--bg-0);
+  }
+  #gameCanvas{
+    display:block;
+    width:100%; height:100%;
+    touch-action:none;
+  }
+
+  /* ---------- HUD ---------- */
+  #hud{
+    position:absolute; inset:0;
+    pointer-events:none;
+    font-variant-numeric:tabular-nums;
+  }
+  .hud-pill{
+    position:absolute;
+    display:flex; align-items:center; gap:6px;
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    backdrop-filter:blur(6px);
+    border-radius:999px;
+    padding:8px 14px;
+    color:var(--ink);
+    font-weight:700;
+    font-size:15px;
+    box-shadow:0 4px 18px rgba(0,0,0,0.35);
+    letter-spacing:0.02em;
+  }
+  #livesPill{ top:max(14px, env(safe-area-inset-top)); left:14px; }
+  #timePill{
+    top:max(14px, env(safe-area-inset-top)); left:50%; transform:translateX(-50%);
+    font-size:17px; min-width:84px; justify-content:center;
+    border-color:rgba(255,210,63,0.25);
+  }
+  #coinPill{ top:max(14px, env(safe-area-inset-top)); right:14px; color:var(--warn); }
+  #livesPill .heart{ filter:drop-shadow(0 0 4px rgba(255,59,92,0.6)); }
+  #comboWrap{
+    position:absolute; top:60px; left:50%; transform:translateX(-50%);
+    text-align:center; opacity:0; transition:opacity .15s;
+  }
+  #comboWrap.show{ opacity:1; }
+  #comboText{
+    font-size:22px; font-weight:900; color:var(--accent-2);
+    text-shadow:0 0 12px rgba(255,94,196,0.7);
+  }
+  #comboSub{ font-size:11px; color:var(--ink-dim); font-weight:700; letter-spacing:0.08em; }
+
+  .corner-btn{
+    position:absolute;
+    width:48px; height:48px;
+    border-radius:50%;
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    backdrop-filter:blur(6px);
+    display:flex; align-items:center; justify-content:center;
+    font-size:20px;
+    pointer-events:auto;
+    color:var(--ink);
+    cursor:pointer;
+  }
+  #pauseBtn{ bottom:max(16px, env(safe-area-inset-bottom)); left:16px; }
+  #settingsBtn{ bottom:max(16px, env(safe-area-inset-bottom)); right:16px; }
+
+  #bossBar{
+    position:absolute; top:60px; left:50%; transform:translateX(-50%);
+    width:min(70vw, 420px);
+    opacity:0; transition:opacity .3s;
+    pointer-events:none;
+  }
+  #bossBar.show{ opacity:1; }
+  #bossName{
+    text-align:center; font-weight:900; font-size:13px; letter-spacing:0.12em;
+    color:var(--danger); margin-bottom:4px; text-shadow:0 0 10px rgba(255,59,92,0.6);
+    text-transform:uppercase;
+  }
+  #bossHpOuter{
+    height:10px; border-radius:6px; background:rgba(255,255,255,0.08);
+    border:1px solid rgba(255,59,92,0.35); overflow:hidden;
+  }
+  #bossHpInner{
+    height:100%; width:100%;
+    background:linear-gradient(90deg,#ff3b5c,#ff8a3f);
+    transition:width .25s ease;
+  }
+
+  #powerupBar{
+    position:absolute; bottom:max(76px, calc(env(safe-area-inset-bottom) + 76px));
+    left:50%; transform:translateX(-50%);
+    display:flex; gap:8px;
+  }
+  .pu-chip{
+    width:38px; height:38px; border-radius:10px;
+    background:var(--panel); border:1px solid var(--panel-border);
+    display:flex; align-items:center; justify-content:center;
+    font-size:18px; position:relative; overflow:hidden;
+  }
+  .pu-chip .ring{
+    position:absolute; inset:0; border-radius:10px;
+    background:conic-gradient(rgba(94,240,255,0.55) calc(var(--p,1)*360deg), transparent 0);
+    mix-blend-mode:screen;
+  }
+
+  /* ---------- Overlays ---------- */
+  .overlay{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(3,5,12,0.82);
+    backdrop-filter:blur(4px);
+    z-index:50;
+    opacity:0; pointer-events:none;
+    transition:opacity .25s ease;
+  }
+  .overlay.show{ opacity:1; pointer-events:auto; }
+
+  .panel{
+    background:linear-gradient(160deg, rgba(16,22,42,0.95), rgba(8,11,22,0.95));
+    border:1px solid var(--panel-border);
+    border-radius:22px;
+    padding:28px 26px;
+    width:min(92vw, 380px);
+    max-height:88vh;
+    overflow-y:auto;
+    box-shadow:0 20px 60px rgba(0,0,0,0.55), 0 0 0 1px rgba(94,240,255,0.05) inset;
+    color:var(--ink);
+    text-align:center;
+  }
+  .panel::-webkit-scrollbar{ width:4px; }
+  .panel::-webkit-scrollbar-thumb{ background:rgba(94,240,255,0.3); border-radius:4px; }
+
+  .title-xl{
+    font-size:38px; font-weight:900; letter-spacing:0.04em;
+    background:linear-gradient(90deg,var(--accent),var(--accent-2));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    margin:0 0 4px;
+    filter:drop-shadow(0 0 18px rgba(94,240,255,0.3));
+  }
+  .subtitle{ color:var(--ink-dim); font-size:13px; margin-bottom:22px; letter-spacing:0.04em;}
+
+  .stat-grid{
+    display:grid; grid-template-columns:1fr 1fr; gap:10px;
+    margin:18px 0 22px;
+  }
+  .stat-box{
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:14px; padding:10px 8px;
+  }
+  .stat-box .v{ font-size:20px; font-weight:900; color:var(--ink); }
+  .stat-box .l{ font-size:10px; color:var(--ink-dim); letter-spacing:0.08em; text-transform:uppercase; margin-top:2px;}
+  .stat-box.new .v{ color:var(--ok); }
+
+  .btn{
+    display:block; width:100%;
+    padding:14px 18px; margin-top:10px;
+    border-radius:14px; border:none;
+    font-size:15px; font-weight:800; letter-spacing:0.03em;
+    cursor:pointer;
+    transition:transform .08s ease, filter .15s ease;
+  }
+  .btn:active{ transform:scale(0.97); }
+  .btn-primary{
+    background:linear-gradient(135deg,var(--accent),#3aa9ff);
+    color:#031018;
+    box-shadow:0 8px 24px rgba(94,240,255,0.25);
+  }
+  .btn-secondary{
+    background:rgba(255,255,255,0.06);
+    color:var(--ink);
+    border:1px solid rgba(255,255,255,0.12);
+  }
+  .btn-ghost{
+    background:transparent;
+    color:var(--ink-dim);
+    border:1px solid rgba(255,255,255,0.08);
+  }
+
+  #startScreen .emoji-rain{
+    font-size:30px; margin-bottom:6px; letter-spacing:6px;
+  }
+
+  .tab-row{ display:flex; gap:6px; margin-bottom:16px; }
+  .tab-btn{
+    flex:1; padding:8px 4px; border-radius:10px; border:1px solid rgba(255,255,255,0.08);
+    background:rgba(255,255,255,0.03); color:var(--ink-dim); font-size:11px; font-weight:800;
+    letter-spacing:0.05em; cursor:pointer;
+  }
+  .tab-btn.active{ background:rgba(94,240,255,0.12); color:var(--accent); border-color:rgba(94,240,255,0.3); }
+
+  .cosmetic-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:8px;
+  }
+  .cos-item{
+    aspect-ratio:1; border-radius:12px;
+    background:rgba(255,255,255,0.04); border:2px solid rgba(255,255,255,0.08);
+    display:flex; align-items:center; justify-content:center;
+    font-size:20px; cursor:pointer; position:relative;
+  }
+  .cos-item.locked{ filter:grayscale(1) brightness(0.5); }
+  .cos-item.selected{ border-color:var(--accent); box-shadow:0 0 12px rgba(94,240,255,0.4); }
+  .cos-item .lock-tag{
+    position:absolute; bottom:2px; right:2px; font-size:8px; background:rgba(0,0,0,0.6);
+    border-radius:4px; padding:1px 3px; color:var(--warn);
+  }
+
+  .leader-row{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 10px; border-radius:10px; margin-bottom:6px;
+    background:rgba(255,255,255,0.03); font-size:13px;
+  }
+  .leader-row .rank{ color:var(--accent); font-weight:900; width:24px; text-align:left;}
+  .leader-row .nm{ flex:1; text-align:left; color:var(--ink); font-weight:700; }
+  .leader-row .sc{ color:var(--ink-dim); font-weight:700; }
+
+  .ach-row{
+    display:flex; align-items:center; gap:10px;
+    padding:8px 6px; border-bottom:1px solid rgba(255,255,255,0.05);
+    text-align:left;
+  }
+  .ach-row .ic{ font-size:20px; width:28px; text-align:center; }
+  .ach-row .ic.locked{ filter:grayscale(1) opacity(0.35); }
+  .ach-row .tx{ flex:1; }
+  .ach-row .tx .nm{ font-size:13px; font-weight:700; color:var(--ink); }
+  .ach-row .tx .ds{ font-size:11px; color:var(--ink-dim); }
+  .ach-row.done .nm{ color:var(--ok); }
+
+  #pauseScreen .panel{ width:min(86vw,320px); }
+
+  .close-x{
+    position:absolute; top:10px; right:14px; font-size:22px; color:var(--ink-dim);
+    cursor:pointer; pointer-events:auto;
+  }
+
+  #toast{
+    position:absolute; top:110px; left:50%; transform:translateX(-50%) translateY(-10px);
+    background:var(--panel); border:1px solid var(--panel-border); backdrop-filter:blur(6px);
+    border-radius:12px; padding:8px 16px; color:var(--ink); font-weight:800; font-size:13px;
+    opacity:0; transition:all .25s ease; pointer-events:none; white-space:nowrap;
+    z-index:40;
+  }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  #flashOverlay{
+    position:absolute; inset:0; pointer-events:none; mix-blend-mode:screen;
+    opacity:0; z-index:30; background:#fff;
+  }
+
+  @media (max-width:420px){
+    .title-xl{ font-size:30px; }
+    .panel{ padding:22px 18px; }
+  }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="gameCanvas"></canvas>
+
+  <div id="flashOverlay"></div>
+
+  <div id="hud">
+    <div class="hud-pill" id="livesPill"><span class="heart">❤️</span><span id="livesVal">3</span></div>
+    <div class="hud-pill" id="timePill"><span id="timeVal">0.0</span></div>
+    <div class="hud-pill" id="coinPill">🪙<span id="coinVal">0</span></div>
+
+    <div id="comboWrap">
+      <div id="comboText">x1</div>
+      <div id="comboSub">COMBO</div>
+    </div>
+
+    <div id="bossBar">
+      <div id="bossName">Boss</div>
+      <div id="bossHpOuter"><div id="bossHpInner"></div></div>
+    </div>
+
+    <div id="powerupBar"></div>
+
+    <div class="corner-btn" id="pauseBtn">⏸</div>
+    <div class="corner-btn" id="settingsBtn">⚙️</div>
+  </div>
+
+  <div id="toast"></div>
+
+  <!-- START SCREEN -->
+  <div class="overlay show" id="startScreen">
+    <div class="panel">
+      <div class="emoji-rain">😀😡👻🤖💀</div>
+      <div class="title-xl">EMOJI ESCAPE</div>
+      <div class="subtitle">Survive the swarm. Chase the high score.</div>
+
+      <div class="stat-grid">
+        <div class="stat-box"><div class="v" id="bestTimeDisplay">0.0s</div><div class="l">Best Time</div></div>
+        <div class="stat-box"><div class="v" id="totalCoinsDisplay">0</div><div class="l">Total Coins</div></div>
+      </div>
+
+      <button class="btn btn-primary" id="playBtn">▶ PLAY</button>
+      <button class="btn btn-secondary" id="cosmeticsBtn">🎨 COSMETICS</button>
+      <button class="btn btn-secondary" id="leaderboardBtn">🏆 LEADERBOARD</button>
+      <button class="btn btn-ghost" id="achievementsBtn">⭐ ACHIEVEMENTS</button>
+      <button class="btn btn-ghost" id="dailyBtn">🎲 DAILY CHALLENGE</button>
+    </div>
+  </div>
+
+  <!-- PAUSE -->
+  <div class="overlay" id="pauseScreen">
+    <div class="panel">
+      <div class="title-xl" style="font-size:28px;">PAUSED</div>
+      <button class="btn btn-primary" id="resumeBtn">▶ RESUME</button>
+      <button class="btn btn-secondary" id="restartFromPauseBtn">↻ RESTART</button>
+      <button class="btn btn-ghost" id="menuFromPauseBtn">☰ MAIN MENU</button>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="overlay" id="settingsScreen">
+    <div class="panel">
+      <span class="close-x" id="closeSettings">✕</span>
+      <div class="title-xl" style="font-size:26px;">SETTINGS</div>
+      <div style="text-align:left; margin-top:10px;">
+        <label style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; color:var(--ink); font-weight:700; font-size:14px; border-bottom:1px solid rgba(255,255,255,0.06);">
+          🔊 Sound <input type="checkbox" id="soundToggle" checked style="width:20px;height:20px;">
+        </label>
+        <label style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; color:var(--ink); font-weight:700; font-size:14px; border-bottom:1px solid rgba(255,255,255,0.06);">
+          📳 Screen Shake <input type="checkbox" id="shakeToggle" checked style="width:20px;height:20px;">
+        </label>
+        <label style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; color:var(--ink); font-weight:700; font-size:14px;">
+          ✨ Reduced Motion <input type="checkbox" id="reducedToggle" style="width:20px;height:20px;">
+        </label>
+      </div>
+      <button class="btn btn-secondary" id="closeSettingsBtn" style="margin-top:18px;">DONE</button>
+    </div>
+  </div>
+
+  <!-- COSMETICS -->
+  <div class="overlay" id="cosmeticsScreen">
+    <div class="panel">
+      <span class="close-x" id="closeCosmetics">✕</span>
+      <div class="title-xl" style="font-size:26px;">COSMETICS</div>
+      <div class="subtitle" id="cosmeticCoinsLine">🪙 0 coins</div>
+      <div class="tab-row" id="cosmeticTabs"></div>
+      <div class="cosmetic-grid" id="cosmeticGrid"></div>
+      <button class="btn btn-secondary" id="closeCosmeticsBtn" style="margin-top:14px;">DONE</button>
+    </div>
+  </div>
+
+  <!-- LEADERBOARD -->
+  <div class="overlay" id="leaderboardScreen">
+    <div class="panel">
+      <span class="close-x" id="closeLeaderboard">✕</span>
+      <div class="title-xl" style="font-size:26px;">LEADERBOARD</div>
+      <div class="tab-row" id="leaderTabs">
+        <div class="tab-btn active" data-range="daily">DAILY</div>
+        <div class="tab-btn" data-range="weekly">WEEKLY</div>
+        <div class="tab-btn" data-range="alltime">ALL TIME</div>
+      </div>
+      <div id="leaderList"></div>
+      <button class="btn btn-secondary" id="closeLeaderboardBtn" style="margin-top:10px;">DONE</button>
+    </div>
+  </div>
+
+  <!-- ACHIEVEMENTS -->
+  <div class="overlay" id="achievementsScreen">
+    <div class="panel">
+      <span class="close-x" id="closeAchievements">✕</span>
+      <div class="title-xl" style="font-size:26px;">ACHIEVEMENTS</div>
+      <div id="achList" style="text-align:left; max-height:50vh; overflow-y:auto;"></div>
+      <button class="btn btn-secondary" id="closeAchievementsBtn" style="margin-top:14px;">DONE</button>
+    </div>
+  </div>
+
+  <!-- GAME OVER -->
+  <div class="overlay" id="gameOverScreen">
+    <div class="panel">
+      <div class="title-xl" style="font-size:34px; color:var(--danger); background:none; -webkit-text-fill-color:var(--danger); filter:drop-shadow(0 0 16px rgba(255,59,92,0.5));">GAME OVER</div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="v" id="finalTime">0.0s</div><div class="l">Survival Time</div></div>
+        <div class="stat-box"><div class="v" id="finalCoins">0</div><div class="l">Coins Earned</div></div>
+        <div class="stat-box" id="bestTimeBox"><div class="v" id="finalBest">0.0s</div><div class="l">Best Time</div></div>
+        <div class="stat-box"><div class="v" id="finalCombo">0</div><div class="l">Highest Combo</div></div>
+      </div>
+      <button class="btn btn-primary" id="restartBtn">↻ RESTART</button>
+      <button class="btn btn-secondary" id="shareBtn">📤 SHARE SCORE</button>
+      <button class="btn btn-ghost" id="menuBtn">☰ MAIN MENU</button>
+    </div>
+  </div>
+
+  <!-- BOSS WARNING -->
+  <div id="bossWarning" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; z-index:35; opacity:0;">
+    <div style="text-align:center;">
+      <div style="font-size:48px; font-weight:900; color:var(--danger); text-shadow:0 0 30px rgba(255,59,92,0.8); letter-spacing:0.1em;" id="bossWarningText">⚠ BOSS INCOMING ⚠</div>
+    </div>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
